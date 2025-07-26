@@ -22,7 +22,7 @@ jobs:
             - name: Enable Corepack and install dependencies with Yarn
               run: |
                   corepack enable
-                  yarn install
+                  YARN_ENABLE_IMMUTABLE_INSTALLS=false yarn install
 
             - name: Run build script
               run: node build.mjs
