@@ -61,5 +61,6 @@ export default class ExamplePlugin extends Plugin {
 
     stop(): void {
         this.log("ExamplePlugin stopped");
+        this.panelManager.removeMenuItem('⚡️');
     }
 }
