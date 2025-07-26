@@ -1,0 +1,36 @@
+name: Build/Release
+
+on:
+    workflow_dispatch:
+    release:
+        types: [published]
+
+jobs:
+    build-and-upload:
+        runs-on: ubuntu-latest
+        name: Build and Upload Assets
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js with Corepack (Yarn)
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 'lts/*'
+
+            - name: Enable Corepack and install dependencies with Yarn
+              run: |
+                  corepack enable
+                  yarn install
+
+            - name: Run build script
+              run: node build.mjs
+
+            - name: Upload release assets
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: dist/**
+                  tag_name: ${{ github.event.release.tag_name }}
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
