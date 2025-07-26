@@ -190,12 +190,12 @@ Testing your plugin locally is essential before publishing to the Plugin Hub. Hi
 3. **Copy the built plugin**:
    Copy your built plugin file to the HighLite plugins directory:
    ```bash
-   cp dist/ExamplePlugin.js /path/to/HighLiteDesktop/src/renderer/client/highlite/plugins/
+   cp dist/ExamplePlugin.js /path/to/HighLiteDesktop/src/renderer/client/plugins/
    ```
 
 ### Testing Guidelines
 
-- **Plugin Location**: Place any built plugin (e.g., `PluginName.js`) in `HighliteDesktop/src/renderer/client/highlite/plugins/`
+- **Plugin Location**: Place any built plugin (e.g., `PluginName.js`) in `HighliteDesktop/src/renderer/client/plugins/`
 - **Automatic Loading**: Plugins in this directory are automatically loaded by the client
 - **Name Conflicts**: If testing an existing Plugin Hub plugin, temporarily use a different name to avoid conflicts with the remotely pulled version
 - **Hot Reloading**: After making changes, rebuild your plugin and replace the file in the plugins directory
