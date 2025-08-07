@@ -21,6 +21,9 @@ import sound_looting_around3 from '../../resources/sounds/SpellSound/sfx/carve3.
 import sound_caughtstealing1 from '../../resources/sounds/SpellSound/sfx/caughtstealing1.mp3';
 import sound_caughtstealing2 from '../../resources/sounds/SpellSound/sfx/caughtstealing2.mp3';
 import sound_caughtstealing3 from '../../resources/sounds/SpellSound/sfx/caughtstealing3.mp3';
+import sound_steal1 from '../../resources/sounds/SpellSound/sfx/steal1.mp3';
+import sound_steal2 from '../../resources/sounds/SpellSound/sfx/steal2.mp3';
+import sound_steal3 from '../../resources/sounds/SpellSound/sfx/steal3.mp3';
 
 /**
  * A simple 3D vector class to represent positions in 3D space.
@@ -57,6 +60,7 @@ enum SfxType {
     MetalSmithed,
     LootingAround, // Sound when thieving but not yet looting an item
     CaughtStealing, // Sound when caught stealing (stunned)
+    StealSuccessful, // Sound when successfully stealing an item
     // Add more sound effect types as needed
 }
 
@@ -148,12 +152,73 @@ class SfxSource {
  *  states which are useful for sound effects, such as "CrimeSuccess".
  * This is used to determine the current state of the player and play
  *  the appropriate sound effect.
+ * 
+ * Note: We can't extend the ActionState enum directly, so we create a new
+ *  enum with the same values and add our own. It's not very DRY, but it'll do.
  */
-const EnhancedActionState = {
-    ...ActionState,
-    CrimeSuccess: 'Crime Success', // Represents a successful crime action
-    // Add more enhanced states as needed
+enum PlayerEventType {
+    Any = -1,
+    IdleState = 0,
+    MovingState = 1,
+    MovingTowardTargetState = 2,
+    BankingState = 3,
+    MeleeCombatState = 4,
+    TradingState = 5,
+    ShoppingState = 6,
+    FishingState = 7,
+    CookingState = 8,
+    RespawningState = 9,
+    PlayerDeadState = 10,
+    ConversationState = 11,
+    ChangingAppearanceState = 12,
+    WoodcuttingState = 13,
+    MiningState = 14,
+    HarvestingState = 15,
+    TreeShakingState = 16,
+    SmeltingState = 17,
+    SmithingState = 18,
+    CraftingState = 19,
+    GoThroughDoorState = 20,
+    MagicCombatState = 21,
+    RangeCombatState = 22,
+    EnchantingState = 23,
+    TeleportingState = 24,
+    NPCDeadState = 25,
+    CreatingNonSkillItemsState = 26,
+    SearchingWorldEntityState = 27,
+    PotionMakingState = 28,
+    MineThroughRocksState = 29,
+    UsingSpinningWheelState = 30,
+    ClimbSameMapLevelState = 31,
+    SmeltingKilnState = 32,
+    PlayerLoggingOutState = 33,
+    PickpocketingState = 34,
+    StunnedState = 35,
+    PicklockingState = 36,
+    NPCConversationState = 37,
+    RubbingItemState = 38,
+    OpeningItemState = 39,
+    UsingItemOnEntityState = 40,
+    DiggingState = 41,
+
+    // Start at 100 to avoid conflicting with any hidden state we might not know about.
+    CrimeSuccess = 100,
 }
+
+/**
+ * An enhanced version of the ActionState enum that includes additional
+ *  states which are useful for sound effects, such as "CrimeSuccess".
+ * This is used to determine the current state of the player and play
+ *  the appropriate sound effect.
+ */
+class PlayerEvent {
+    public eventType : PlayerEventType;
+
+    constructor(eventState : PlayerEventType) {
+        this.eventType = eventState;
+    }
+}
+
 /**
  * An interface that defines the parameters for a sound effect. This is
  *  used to create sound effects using named parameters in a JSON
@@ -244,7 +309,7 @@ export class SpellSoundSfx {
      *  determine if the player has changed state since the last
      *  update, so that we can play the appropriate sound effect.
      */
-    private lastPlayerState: ActionState = ActionState.Any;
+    private lastPlayerState: PlayerEventType = PlayerEventType.Any;
 
     /**
      * The highlite sound manager, which is used to play sound effects.
@@ -357,6 +422,19 @@ export class SpellSoundSfx {
                 type: SfxType.CaughtStealing,
                 url: sound_caughtstealing3
             }),
+
+            new SfxTag({
+                type: SfxType.StealSuccessful,
+                url: sound_steal1
+            }),
+            new SfxTag({
+                type: SfxType.StealSuccessful,
+                url: sound_steal2
+            }),
+            new SfxTag({
+                type: SfxType.StealSuccessful,
+                url: sound_steal3
+            }),
             // Add more sound effects as needed
         ];
 
@@ -374,6 +452,58 @@ export class SpellSoundSfx {
         this.logToPlugin(`\t<-- Exiting function ${this.init.name}`);
     }
 
+    getCurrentPlayerEvents() : PlayerEvent[] {
+        const player = this.basePlugin.gameHooks.EntityManager.Instance.MainPlayer;
+        if (!player) return [];
+
+        var currentState = player._currentState.getCurrentState();
+        var events: PlayerEvent[] = [];
+
+        // Add extending states here.
+
+        if (this.lastPlayerState == PlayerEventType.PickpocketingState &&
+                currentState != PlayerEventType.PickpocketingState &&
+                currentState != PlayerEventType.StunnedState
+        ) {
+            // If we're no longer pickpocketing, and we didn't get stunned,
+            //  and we were pickpocketing before, then we must have
+            //  succeeded at a crime.
+            events.push(new PlayerEvent(PlayerEventType.CrimeSuccess));
+        }
+        
+        // Map ActionState to PlayerEvent. We will eventually have more than one event
+        //  happening at once (e.g. "CombatStart" state -- multiple NPCs may be attacking)
+        switch (currentState) {
+            case ActionState.IdleState:
+                events.push(new PlayerEvent(PlayerEventType.IdleState));
+                break;
+            case ActionState.MovingState:
+                events.push(new PlayerEvent(PlayerEventType.MovingState));
+                break;
+            case ActionState.MiningState:
+                events.push(new PlayerEvent(PlayerEventType.MiningState));
+                break;
+            case ActionState.SmeltingState:
+                events.push(new PlayerEvent(PlayerEventType.SmeltingState));
+                break;
+            case ActionState.SmithingState:
+                events.push(new PlayerEvent(PlayerEventType.SmithingState));
+                break;
+            case ActionState.PickpocketingState:
+                events.push(new PlayerEvent(PlayerEventType.PickpocketingState));
+                break;
+            case ActionState.StunnedState:
+                events.push(new PlayerEvent(PlayerEventType.StunnedState));
+                break;
+            // Add more mappings as needed
+            default:
+                events.push(new PlayerEvent(PlayerEventType.Any));
+                break;
+        }
+
+        return events;
+    }
+
     GameLoop_update(): void {
         const player = this.basePlugin.gameHooks.EntityManager.Instance.MainPlayer;
         if (!player ||
@@ -388,106 +518,121 @@ export class SpellSoundSfx {
 
         this.lastCheckTimestamp = currentTimestamp;
 
-        const currentState = player._currentState.getCurrentState();
-        
-        // Mining
-        if (currentState == ActionState.MiningState) {
-            this.logToPlugin(`\t--> Entering function ${this.GameLoop_update.name} with current state: ${ActionState[currentState]}`);
+        var currentEvents = this.getCurrentPlayerEvents();
 
-            // The source of the sound effect.
-            let sfxSource = new SfxSource({
-                type: SfxSourceType.Player,
-                position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
-            });
+        this.ProcessPlayerEvents(player, currentEvents);
+    }
 
-            new SoundEffect({
-                type: SfxType.PickaxeHit,
-                moduleHandle: this,
-                category: SfxCategory.NonCritical,
-                source: sfxSource
-            }).play();
+    ProcessPlayerEvents(player, events: PlayerEvent[]) {
+        this.logToPlugin(`\t--> Entering function ${this.ProcessPlayerEvents.name} with events: ${events.map(e => e.eventType).join(", ")}`);
 
-            this.logToPlugin(`\t<-- Exiting function ${this.GameLoop_update.name}`);
+        for (let event of events) {
+            this.logToPlugin(`\t--> Processing state "${PlayerEventType[event.eventType]}"`);
+
+            // Mining
+            if (event.eventType == PlayerEventType.MiningState) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.PickaxeHit,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Smelting
+            else if (event.eventType == PlayerEventType.SmeltingState) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.OreSmelted,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+            
+            // Smithing
+            else if (event.eventType == PlayerEventType.SmithingState) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.MetalSmithed,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Looting around
+            else if (event.eventType == PlayerEventType.PickpocketingState) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.LootingAround,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Caught stealing
+            else if (event.eventType == PlayerEventType.StunnedState) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.CaughtStealing,
+                    moduleHandle: this,
+                    category: SfxCategory.Critical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Crime Success
+            else if (event.eventType == PlayerEventType.CrimeSuccess) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.StealSuccessful,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            this.logToPlugin(`\t<-- Exiting function ${this.ProcessPlayerEvents.name} with event state: ${event.eventType}`);
         }
 
-        // Smelting
-        else if (currentState == ActionState.SmeltingState) {
-            this.logToPlugin(`\t--> Entering function ${this.GameLoop_update.name} with current state: ${ActionState[currentState]}`);
-
-            // The source of the sound effect.
-            let sfxSource = new SfxSource({
-                type: SfxSourceType.Player,
-                position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
-            });
-
-            new SoundEffect({
-                type: SfxType.OreSmelted,
-                moduleHandle: this,
-                category: SfxCategory.NonCritical,
-                source: sfxSource
-            }).play();
-
-            this.logToPlugin(`\t<-- Exiting function ${this.GameLoop_update.name}`);
-        }
-        
-        // Smithing
-        else if (currentState == ActionState.SmithingState) {
-            this.logToPlugin(`\t--> Entering function ${this.GameLoop_update.name} with current state: ${ActionState[currentState]}`);
-
-            // The source of the sound effect.
-            let sfxSource = new SfxSource({
-                type: SfxSourceType.Player,
-                position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
-            });
-
-            new SoundEffect({
-                type: SfxType.MetalSmithed,
-                moduleHandle: this,
-                category: SfxCategory.NonCritical,
-                source: sfxSource
-            }).play();
-
-            this.logToPlugin(`\t<-- Exiting function ${this.GameLoop_update.name}`);
-        }
-
-        // Looting around
-        else if (currentState == ActionState.PickpocketingState) {
-            this.logToPlugin(`\t--> Entering function ${this.GameLoop_update.name} with current state: ${ActionState[currentState]}`);
-
-            // The source of the sound effect.
-            let sfxSource = new SfxSource({
-                type: SfxSourceType.Player,
-                position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
-            });
-
-            new SoundEffect({
-                type: SfxType.LootingAround,
-                moduleHandle: this,
-                category: SfxCategory.NonCritical,
-                source: sfxSource
-            }).play();
-
-            this.logToPlugin(`\t<-- Exiting function ${this.GameLoop_update.name}`);
-        }
-
-        // Caught stealing
-        else if (currentState == ActionState.StunnedState) {
-            this.logToPlugin(`\t--> Entering function ${this.GameLoop_update.name} with current state: ${ActionState[currentState]}`);
-
-            // The source of the sound effect.
-            let sfxSource = new SfxSource({
-                type: SfxSourceType.Player,
-                position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
-            });
-
-            new SoundEffect({
-                type: SfxType.CaughtStealing,
-                moduleHandle: this,
-                category: SfxCategory.Critical,
-                source: sfxSource
-            }).play();
-
-            this.logToPlugin(`\t<-- Exiting function ${this.GameLoop_update.name}`);
+        // Update the last known player state to the most recent event's state.
+        if (events.length > 0) {
+            this.lastPlayerState = events[events.length - 1].eventType;
+        } else {
+            this.lastPlayerState = PlayerEventType.Any;
         }
     }
 }
