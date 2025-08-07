@@ -727,17 +727,17 @@ export default class SpellSound extends Plugin {
      * Starts the plugin, adds styles and event listeners.
      */
     start() {
+        // If not enabled, return
+        if (!this.settings.enable.value) {
+            return;
+        }
+
         this.logToPlugin('Starting Spell Sound...', LogLevel.Important);
         
         this.createMusicButton();
         this.createMusicPanel('hidden');
 
         this.isLoggedIn = true;
-
-        // If not enabled, return
-        if (!this.settings.enable.value) {
-            return;
-        }
 
         // Show the music player button
         if (this.musicButton) {
