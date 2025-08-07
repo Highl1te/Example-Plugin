@@ -6,21 +6,21 @@ import { SoundManager } from "@highlite/plugin-api";
 ////  of these files are missing, so that I can fix it.
 
 //// ==== Sound Effects below here ====
-import sound_pickaxe1 from '../../resources/sounds/SpellSound/sounds/pickaxe1.mp3';
-import sound_pickaxe2 from '../../resources/sounds/SpellSound/sounds/pickaxe2.mp3';
-import sound_pickaxe3 from '../../resources/sounds/SpellSound/sounds/pickaxe3.mp3';
-import sound_smelt1 from '../../resources/sounds/SpellSound/sounds/smelt1.mp3';
-import sound_smelt2 from '../../resources/sounds/SpellSound/sounds/smelt2.mp3';
-import sound_smelt3 from '../../resources/sounds/SpellSound/sounds/smelt3.mp3';
-import sound_smith1 from '../../resources/sounds/SpellSound/sounds/smith1.mp3';
-import sound_smith2 from '../../resources/sounds/SpellSound/sounds/smith2.mp3';
-import sound_smith3 from '../../resources/sounds/SpellSound/sounds/smith3.mp3';
-import sound_looting_around1 from '../../resources/sounds/SpellSound/sounds/looting_around1.wav';
-import sound_looting_around2 from '../../resources/sounds/SpellSound/sounds/looting_around2.wav';
-import sound_looting_around3 from '../../resources/sounds/SpellSound/sounds/looting_around3.wav';
-import sound_caughtstealing1 from '../../resources/sounds/SpellSound/sounds/caughtstealing1.mp3';
-import sound_caughtstealing2 from '../../resources/sounds/SpellSound/sounds/caughtstealing2.mp3';
-import sound_caughtstealing3 from '../../resources/sounds/SpellSound/sounds/caughtstealing3.mp3';
+import sound_pickaxe1 from '../../resources/sounds/SpellSound/sfx/pickaxe1.mp3';
+import sound_pickaxe2 from '../../resources/sounds/SpellSound/sfx/pickaxe2.mp3';
+import sound_pickaxe3 from '../../resources/sounds/SpellSound/sfx/pickaxe3.mp3';
+import sound_smelt1 from '../../resources/sounds/SpellSound/sfx/smelt1.mp3';
+import sound_smelt2 from '../../resources/sounds/SpellSound/sfx/smelt2.mp3';
+import sound_smelt3 from '../../resources/sounds/SpellSound/sfx/smelt3.mp3';
+import sound_smith1 from '../../resources/sounds/SpellSound/sfx/smith1.mp3';
+import sound_smith2 from '../../resources/sounds/SpellSound/sfx/smith2.mp3';
+import sound_smith3 from '../../resources/sounds/SpellSound/sfx/smith3.mp3';
+import sound_looting_around1 from '../../resources/sounds/SpellSound/sfx/looting_around1.wav';
+import sound_looting_around2 from '../../resources/sounds/SpellSound/sfx/looting_around2.wav';
+import sound_looting_around3 from '../../resources/sounds/SpellSound/sfx/looting_around3.wav';
+import sound_caughtstealing1 from '../../resources/sounds/SpellSound/sfx/caughtstealing1.mp3';
+import sound_caughtstealing2 from '../../resources/sounds/SpellSound/sfx/caughtstealing2.mp3';
+import sound_caughtstealing3 from '../../resources/sounds/SpellSound/sfx/caughtstealing3.mp3';
 
 /**
  * A simple 3D vector class to represent positions in 3D space.
@@ -143,6 +143,17 @@ class SfxSource {
     }
 }
 
+/**
+ * An enhanced version of the ActionState enum that includes additional
+ *  states which are useful for sound effects, such as "CrimeSuccess".
+ * This is used to determine the current state of the player and play
+ *  the appropriate sound effect.
+ */
+const EnhancedActionState = {
+    ...ActionState,
+    CrimeSuccess: 'Crime Success', // Represents a successful crime action
+    // Add more enhanced states as needed
+}
 /**
  * An interface that defines the parameters for a sound effect. This is
  *  used to create sound effects using named parameters in a JSON

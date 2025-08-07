@@ -33,7 +33,7 @@ import song_UpOnGnomeHill from '../../resources/sounds/SpellSound/songs/up_on_gn
 import song_Barbarian from '../../resources/sounds/SpellSound/songs/barbarian.mp3';
 import song_GlockAndPiano from '../../resources/sounds/SpellSound/songs/glock_and_piano.mp3';
 import song_TanSandMan from '../../resources/sounds/SpellSound/songs/tan_sand_man.mp3';
-import song_DistantHorizon from '../../resources/sounds/SpellSound/songs/distant_horizon.wav';
+import song_DistantHorizon from '../../resources/sounds/SpellSound/songs/distant_horizon.mp3';
 import { SpellSoundSfx } from './SpellSoundSfx';
 
 /**
@@ -710,7 +710,12 @@ export default class SpellSound extends Plugin {
         this.logToPlugin('..Initializing Spell Sound Music', LogLevel.Important);
         this.initSongs();
         this.initMusicRegions();
-        this.playSongByTag(MusicRegionName.Title, MusicRegionLayer.Title);
+        
+        // TODO -- plugins can no longer load on the title screen, so
+        //  the HighLite team is going to implement this as part of the
+        //  "enhanced login" setting.
+        //
+        //this.playSongByTag(MusicRegionName.Title, MusicRegionLayer.Title);
         
         this.logToPlugin('..Initializing Spell Sound Sfx', LogLevel.Important);
         this.spellSoundSfx.init();
@@ -726,6 +731,22 @@ export default class SpellSound extends Plugin {
         
         this.createMusicButton();
         this.createMusicPanel('hidden');
+
+        this.isLoggedIn = true;
+
+        // If not enabled, return
+        if (!this.settings.enable.value) {
+            return;
+        }
+
+        // Show the music player button
+        if (this.musicButton) {
+            this.musicButton.style.visibility = 'visible';
+        } else {
+            this.logToPlugin('Music button not found', LogLevel.Error);
+        }
+
+        this.playNextSong();
 
         this.logToPlugin('Spell Sound started.', LogLevel.Important);
     }
@@ -1356,32 +1377,6 @@ export default class SpellSound extends Plugin {
         this.logToPlugin(`Returning ${matchingSongs}`);
         this.logToPlugin(`\t<-- Exiting function ${this.findSongsWithMatchingRegions.name}`);
         return matchingSongs;
-    }
-
-    // Logged In
-    SocketManager_loggedIn(...args): void {
-        this.logToPlugin(`\t--> Entering function ${this.SocketManager_loggedIn.name}`);
-
-        this.isLoggedIn = true;
-
-        // If not enabled, return
-        if (!this.settings.enable.value) {
-            return;
-        }
-
-        // Show the music player button
-        if (this.musicButton) {
-            this.musicButton.style.visibility = 'visible';
-        } else {
-            this.logToPlugin('Music button not found', LogLevel.Error);
-        }
-
-        // switch from the title music
-        if (this.currentSong) {
-            this.playNextSong();
-        }
-
-        this.logToPlugin(`\t<-- Exiting function ${this.SocketManager_loggedIn.name}`);
     }
 
     // Logged Out
