@@ -1,6 +1,7 @@
 import SpellSound, { SpellSoundLogLevel as LogLevel } from "./SpellSound";
 import { ActionState } from "@highlite/plugin-api";
 import { SoundManager } from "@highlite/plugin-api";
+import { Item } from "@highlite/plugin-api";
 
 //// I like importing these so that there's a compile error if any
 ////  of these files are missing, so that I can fix it.
@@ -24,6 +25,9 @@ import sound_caughtstealing3 from '../../resources/sounds/SpellSound/sfx/caughts
 import sound_steal1 from '../../resources/sounds/SpellSound/sfx/steal1.mp3';
 import sound_steal2 from '../../resources/sounds/SpellSound/sfx/steal2.mp3';
 import sound_steal3 from '../../resources/sounds/SpellSound/sfx/steal3.mp3';
+import sound_ore_depleted1 from '../../resources/sounds/SpellSound/sfx/ore_depleted1.mp3';
+import sound_ore_depleted2 from '../../resources/sounds/SpellSound/sfx/ore_depleted2.mp3';
+import sound_ore_depleted3 from '../../resources/sounds/SpellSound/sfx/ore_depleted3.mp3';
 
 /**
  * A simple 3D vector class to represent positions in 3D space.
@@ -61,6 +65,9 @@ enum SfxType {
     LootingAround, // Sound when thieving but not yet looting an item
     CaughtStealing, // Sound when caught stealing (stunned)
     StealSuccessful, // Sound when successfully stealing an item
+    OreDepleted, // Sound when a rock is depleted after mining
+    FishingInProgress, // Sound when fishing but not yet catching a fish
+    FishCaught, // Sound when catching a fish
     // Add more sound effect types as needed
 }
 
@@ -203,6 +210,9 @@ enum PlayerEventType {
 
     // Start at 100 to avoid conflicting with any hidden state we might not know about.
     CrimeSuccess = 100,
+    OreDepleted = 101, // When a rock is depleted after mining
+    FishingInProgress = 102, // When fishing but not yet catching a fish
+    FishCaught = 103, // When catching a fish
 }
 
 /**
@@ -250,8 +260,8 @@ class SoundEffect {
             type,
             moduleHandle,
             category,
-            source,
-        }: SoundEffectParams
+            source,}    
+        : SoundEffectParams
     ) {
         this.type = type;
         this.moduleHandle = moduleHandle;
@@ -276,6 +286,134 @@ class SoundEffect {
         });
 
         this.moduleHandle.logToPlugin(`\t<-- Exiting function ${this.play.name}`);
+    }
+}
+
+interface EasyItemParams {
+    id: number;
+    amount: number;
+    isIOU?: boolean; // Optional, defaults to false
+    isNull?: boolean; // Optional, defaults to false
+    // isNull is used to indicate that this item is a null item (i.e. no item in this slot)
+}
+
+/**
+ * A simple class to represent an item in the player's inventory.
+ *  This is supposed to simplify interacting with the Item game
+ *  hook/interface.
+ */
+class EasyItem {
+    public id: number;
+    public amount: number;
+    public isIOU: boolean;
+    public isNull: boolean;
+
+    constructor({
+            id,
+            amount,
+            isIOU,
+            isNull,}
+        : EasyItemParams
+    ) {
+        this.id = id;
+        this.amount = amount;
+        this.isIOU = isIOU ?? false;
+        this.isNull = isNull ?? false;
+    }
+
+    toString(): string {
+        return `Item ID: ${this.id}, Amount: ${this.amount}, Is IOU: ${this.isIOU}`;
+    }
+}
+
+interface InventoryChangeListener{
+    onInventoryChanged(previousItems: EasyItem[], currentItems: EasyItem[]): void;
+}
+
+/**
+ * A class that handles keeping track of the main player's inventory. This is different from
+ *  the "InventoryManager" gameHook, but closely interacts with it, and is designed to be an
+ *  easier way to interact with the data from said hook.
+ */
+class InventoryManager {
+    private previousItems : Array<EasyItem>;
+    private currentItems : Array<EasyItem>;
+    private eventListeners : InventoryChangeListener[];
+    private moduleHandle : SpellSoundSfx;
+
+    constructor(moduleHandle: SpellSoundSfx) {
+        this.previousItems = [];
+        this.currentItems = [];
+        this.eventListeners = [];
+        this.moduleHandle = moduleHandle;
+    }
+
+    /**
+     * Attaches an event listener to the inventory manager. This listener will be notified
+     *  when the inventory changes.
+     * @param listener - The listener to attach.
+     */
+    attachEventListener(listener: InventoryChangeListener): void {
+        this.eventListeners.push(listener);
+    }
+
+    /**
+     * Removes an event listener from the inventory manager. This listener will no longer
+     *  be notified when the inventory changes.
+     * @param listener 
+     */
+    detachEventListener(listener: InventoryChangeListener): void {
+        this.eventListeners = this.eventListeners.filter(l => l !== listener);
+    }
+
+    /**
+     * Converts an array of (Item | null) objects to an array of EasyItem objects.
+     * This is useful for simplifying the interaction with the inventory items.
+     * 
+     * @param items - An array of Item objects or null values.
+     * @returns An array of EasyItem objects.
+     */
+    ezItemsArrayFromItems(items: Array<Item | null>): EasyItem[] {
+        return items.map(item => {
+            let ezItem : EasyItem;
+
+            if (!item) {
+                // Handle null items gracefully
+                ezItem = new EasyItem({ id: 0, amount: 0, isNull: true});
+            }
+            else {
+                ezItem = new EasyItem({ id: item.Id, amount: item.Amount, isIOU: item.IsIOU });
+            }
+
+            return ezItem;
+        });
+    }
+    
+    pollForInventoryEvents() {
+        this.moduleHandle.logToPlugin(`\t--> Entering function ${this.pollForInventoryEvents.name}`);
+
+        const player = document.highlite.gameHooks.EntityManager.Instance.MainPlayer;
+        if (!player || !player.Inventory) {
+            return;
+        }
+
+        this.currentItems = this.ezItemsArrayFromItems(player.Inventory.Items);
+        var isInventoryTheSame = this.previousItems.every((item, index) => item?.id === this.currentItems[index]?.id);
+
+        if (!isInventoryTheSame) {
+            // Notify all listeners of the inventory change
+            this.eventListeners.forEach(listener => {
+                listener.onInventoryChanged(this.previousItems, this.currentItems);
+            });
+
+            // Log the inventory change
+            this.moduleHandle.logToPlugin(`Inventory changed: ${this.previousItems.map(item => item.toString()).join(", ")} -> ${this.currentItems.map(item => item.toString()).join(", ")}`, LogLevel.Debug);
+        }
+
+        // Update previous items for the next poll
+        this.previousItems = [...this.currentItems];
+
+        this.moduleHandle.logToPlugin(`\t<-- Exiting function ${this.pollForInventoryEvents.name}`);
     }
 }
 
@@ -318,6 +456,11 @@ export class SpellSoundSfx {
     
     private lastCheckTimestamp : number = 0;
 
+    /**
+     * As of 8/9/2025, InventoryManager doesn't have a referenceable type
+     *  in HighLite. However, it's still a part of the gameHooks.
+     */
+
     constructor(basePlugin : SpellSound) {
         this.basePlugin = basePlugin;
     }
@@ -336,7 +479,7 @@ export class SpellSoundSfx {
 
         var matchingEffects = this.allSoundEffects.filter((tag) => tag.type === type);
         if (!matchingEffects) {
-            this.logToPlugin(`Sound effect type ${type} not found in module.`);
+            this.logToPlugin(`Sound effect type ${SfxType[type]} not found in module.`);
         }
 
         // Choose a random sound effect from our list of effects.
@@ -365,6 +508,20 @@ export class SpellSoundSfx {
             new SfxTag({
                 type: SfxType.PickaxeHit,
                 url: sound_pickaxe3
+            }),
+
+
+            new SfxTag({
+                type: SfxType.OreDepleted,
+                url: sound_ore_depleted1
+            }),
+            new SfxTag({
+                type: SfxType.OreDepleted,
+                url: sound_ore_depleted2
+            }),
+            new SfxTag({
+                type: SfxType.OreDepleted,
+                url: sound_ore_depleted3
             }),
 
 
@@ -452,6 +609,36 @@ export class SpellSoundSfx {
         this.logToPlugin(`\t<-- Exiting function ${this.init.name}`);
     }
 
+    /**
+     * Adds any of our custom "ActionState"s (i.e. "PlayerEventType"s) to the event list, if
+     *  any event occurred. This is used to extend the built-in ActionState enum with
+     *  additional states that are useful for sound effects.
+     */
+    addExtendedActionStates(eventList: PlayerEvent[], currentState: ActionState) {
+        // Add any extended action states here.
+        var invManager = document.highlite.gameHooks.EntityManager._entityManager.MainPlayer.Inventory.Items;
+        
+        // Crime Success
+        if (this.lastPlayerState == PlayerEventType.PickpocketingState &&
+            currentState.valueOf() != PlayerEventType.PickpocketingState &&
+            currentState.valueOf() != PlayerEventType.StunnedState
+        ) {
+            // If we're no longer pickpocketing, and we didn't get stunned,
+            //  and we were pickpocketing before, then we must have
+            //  succeeded at a crime.
+            eventList.push(new PlayerEvent(PlayerEventType.CrimeSuccess));
+        }
+
+        // Ore Depleted
+        if (this.lastPlayerState == PlayerEventType.MiningState &&
+            currentState.valueOf() != PlayerEventType.MiningState
+        ) {
+            // If we're no longer mining, but we were mining before,
+            //  then we must have finished mining a rock.
+            eventList.push(new PlayerEvent(PlayerEventType.OreDepleted));
+        }
+    }
+
     getCurrentPlayerEvents() : PlayerEvent[] {
         const player = this.basePlugin.gameHooks.EntityManager.Instance.MainPlayer;
         if (!player) return [];
@@ -459,18 +646,8 @@ export class SpellSoundSfx {
         var currentState = player._currentState.getCurrentState();
         var events: PlayerEvent[] = [];
 
-        // Add extending states here.
+        this.addExtendedActionStates(events, currentState);
 
-        if (this.lastPlayerState == PlayerEventType.PickpocketingState &&
-                currentState != PlayerEventType.PickpocketingState &&
-                currentState != PlayerEventType.StunnedState
-        ) {
-            // If we're no longer pickpocketing, and we didn't get stunned,
-            //  and we were pickpocketing before, then we must have
-            //  succeeded at a crime.
-            events.push(new PlayerEvent(PlayerEventType.CrimeSuccess));
-        }
-        
         // Map ActionState to PlayerEvent. We will eventually have more than one event
         //  happening at once (e.g. "CombatStart" state -- multiple NPCs may be attacking)
         switch (currentState) {
@@ -512,7 +689,7 @@ export class SpellSoundSfx {
 
         var currentTimestamp = Date.now();
         if (currentTimestamp - this.lastCheckTimestamp < 1500) {
-            // Only check every 500ms to avoid excessive checks
+            // Only check every 1500ms to avoid excessive checks
             return;
         }
 
@@ -619,6 +796,22 @@ export class SpellSoundSfx {
 
                 new SoundEffect({
                     type: SfxType.StealSuccessful,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Ore Depleted
+            else if (event.eventType == PlayerEventType.OreDepleted) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.OreDepleted,
                     moduleHandle: this,
                     category: SfxCategory.NonCritical,
                     source: sfxSource
