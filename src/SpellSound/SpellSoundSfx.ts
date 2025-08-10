@@ -28,6 +28,9 @@ import sound_steal3 from '../../resources/sounds/SpellSound/sfx/steal3.mp3';
 import sound_ore_depleted1 from '../../resources/sounds/SpellSound/sfx/ore_depleted1.mp3';
 import sound_ore_depleted2 from '../../resources/sounds/SpellSound/sfx/ore_depleted2.mp3';
 import sound_ore_depleted3 from '../../resources/sounds/SpellSound/sfx/ore_depleted3.mp3';
+import sound_fishing1 from '../../resources/sounds/SpellSound/sfx/fishing1.mp3';
+import sound_fishing2 from '../../resources/sounds/SpellSound/sfx/fishing2.mp3';
+import sound_fishing3 from '../../resources/sounds/SpellSound/sfx/fishing3.mp3';
 
 /**
  * A simple 3D vector class to represent positions in 3D space.
@@ -272,7 +275,7 @@ class SoundEffect {
         //  is an error.
         var sfxMetadataTag = this.moduleHandle.findSoundEffectTagByType(type);
         if (!sfxMetadataTag) {
-            throw new Error(`Sound effect type ${type} not found in module.`);
+            throw new Error(`Sound effect type '${SfxType[type]}' not found in module.`);
         }
 
         this.audioHandle = moduleHandle.getSoundManager().createAudioElement(sfxMetadataTag.url);        
@@ -321,13 +324,27 @@ class EasyItem {
         this.isNull = isNull ?? false;
     }
 
+    /**
+     * Compares this EasyItem to another EasyItem for equality.
+     *
+     * @param other - The other EasyItem to compare to.
+     * @returns True if the items are equal, false otherwise.
+     */
+    isEqual(other: EasyItem): boolean {
+        return this.id === other.id &&
+                this.amount === other.amount &&
+                this.isIOU === other.isIOU &&
+                this.isNull === other.isNull;
+    }
+
     toString(): string {
         return `Item ID: ${this.id}, Amount: ${this.amount}, Is IOU: ${this.isIOU}`;
     }
 }
 
-interface InventoryChangeListener{
-    onInventoryChanged(previousItems: EasyItem[], currentItems: EasyItem[]): void;
+interface InventoryChangedEvent {
+    previousItems: Array<EasyItem>;
+    currentItems: Array<EasyItem>;
 }
 
 /**
@@ -338,32 +355,22 @@ interface InventoryChangeListener{
 class InventoryManager {
     private previousItems : Array<EasyItem>;
     private currentItems : Array<EasyItem>;
-    private eventListeners : InventoryChangeListener[];
     private moduleHandle : SpellSoundSfx;
+
+    /**
+     * A queue of inventory events that have occurred since the last poll.
+     */
+    private eventQueue : Array<InventoryChangedEvent>;
+
+    public EventQueue() : Array<InventoryChangedEvent> {
+        return this.eventQueue;
+    }
 
     constructor(moduleHandle: SpellSoundSfx) {
         this.previousItems = [];
         this.currentItems = [];
-        this.eventListeners = [];
         this.moduleHandle = moduleHandle;
-    }
-
-    /**
-     * Attaches an event listener to the inventory manager. This listener will be notified
-     *  when the inventory changes.
-     * @param listener - The listener to attach.
-     */
-    attachEventListener(listener: InventoryChangeListener): void {
-        this.eventListeners.push(listener);
-    }
-
-    /**
-     * Removes an event listener from the inventory manager. This listener will no longer
-     *  be notified when the inventory changes.
-     * @param listener 
-     */
-    detachEventListener(listener: InventoryChangeListener): void {
-        this.eventListeners = this.eventListeners.filter(l => l !== listener);
+        this.eventQueue = [];
     }
 
     /**
@@ -389,6 +396,11 @@ class InventoryManager {
         });
     }
     
+    /**
+     * Polls the player's inventory for changes. If any changes are detected,
+     *  they are added to the event queue. This function should be called
+     *  regularly (e.g., in the game loop) to keep track of inventory changes.
+     */
     pollForInventoryEvents() {
         this.moduleHandle.logToPlugin(`\t--> Entering function ${this.pollForInventoryEvents.name}`);
 
@@ -397,13 +409,17 @@ class InventoryManager {
             return;
         }
 
+        // Temporally coupled -- clear the previous frame's event queue before
+        //  adding anything to it.
+        this.eventQueue = [];
+
         this.currentItems = this.ezItemsArrayFromItems(player.Inventory.Items);
-        var isInventoryTheSame = this.previousItems.every((item, index) => item?.id === this.currentItems[index]?.id);
+        var isInventoryTheSame = this.previousItems.every((item, index) => item?.isEqual(this.currentItems[index]));
 
         if (!isInventoryTheSame) {
-            // Notify all listeners of the inventory change
-            this.eventListeners.forEach(listener => {
-                listener.onInventoryChanged(this.previousItems, this.currentItems);
+            this.eventQueue.push({
+                previousItems: [...this.previousItems],
+                currentItems: [...this.currentItems]
             });
 
             // Log the inventory change
@@ -457,12 +473,19 @@ export class SpellSoundSfx {
     private lastCheckTimestamp : number = 0;
 
     /**
+     * A handle to our custom inventory manager, which is used to keep
+     *  track of the player's inventory.
+     */
+    private inventoryManager : InventoryManager;
+
+    /**
      * As of 8/9/2025, InventoryManager doesn't have a referenceable type
      *  in HighLite. However, it's still a part of the gameHooks.
      */
 
     constructor(basePlugin : SpellSound) {
         this.basePlugin = basePlugin;
+        this.inventoryManager = new InventoryManager(this);
     }
 
     // Ease of use function mapped to the main plugin's logger.
@@ -479,13 +502,13 @@ export class SpellSoundSfx {
 
         var matchingEffects = this.allSoundEffects.filter((tag) => tag.type === type);
         if (!matchingEffects) {
-            this.logToPlugin(`Sound effect type ${SfxType[type]} not found in module.`);
+            this.logToPlugin(`Sound effect type '${SfxType[type]}' not found in module.`);
         }
 
         // Choose a random sound effect from our list of effects.
         var chosenSfx = matchingEffects.length > 0 ? matchingEffects[Math.floor(Math.random() * matchingEffects.length)] : undefined;
         if (!chosenSfx) {
-            this.logToPlugin(`No sound effect found for type ${type}.`);
+            this.logToPlugin(`No sound effect found for type '${type}'.`);
         }
 
         this.logToPlugin(`\t<-- Exiting function ${this.findSoundEffectTagByType.name} with sound effect type ${type}.`);
@@ -592,6 +615,19 @@ export class SpellSoundSfx {
                 type: SfxType.StealSuccessful,
                 url: sound_steal3
             }),
+
+            new SfxTag({
+                type: SfxType.FishingInProgress,
+                url: sound_fishing1
+            }),
+            new SfxTag({
+                type: SfxType.FishingInProgress,
+                url: sound_fishing2
+            }),
+            new SfxTag({
+                type: SfxType.FishingInProgress,
+                url: sound_fishing3
+            }),
             // Add more sound effects as needed
         ];
 
@@ -616,7 +652,6 @@ export class SpellSoundSfx {
      */
     addExtendedActionStates(eventList: PlayerEvent[], currentState: ActionState) {
         // Add any extended action states here.
-        var invManager = document.highlite.gameHooks.EntityManager._entityManager.MainPlayer.Inventory.Items;
         
         // Crime Success
         if (this.lastPlayerState == PlayerEventType.PickpocketingState &&
@@ -636,6 +671,22 @@ export class SpellSoundSfx {
             // If we're no longer mining, but we were mining before,
             //  then we must have finished mining a rock.
             eventList.push(new PlayerEvent(PlayerEventType.OreDepleted));
+        }
+
+        // Fishing states. These two states are disambiguations of each-other, as
+        //  the game hook will list them both as "Fishing".
+        if (currentState.valueOf() == PlayerEventType.FishingState
+        ) {
+            // The inventory changed, so we probably caught a fish.
+            //  TODO: make this check the actual item ID's and itemCount
+            //  in the future.
+            if (this.inventoryManager.EventQueue().length > 0) {
+                eventList.push(new PlayerEvent(PlayerEventType.FishCaught));
+            }
+            else {
+                // If we're fishing, then we must be in the process of fishing.
+                eventList.push(new PlayerEvent(PlayerEventType.FishingInProgress));
+            }
         }
     }
 
@@ -694,6 +745,9 @@ export class SpellSoundSfx {
         }
 
         this.lastCheckTimestamp = currentTimestamp;
+
+        // Poll any submodules that need polling. Currently, there's only this one.
+        this.inventoryManager.pollForInventoryEvents();
 
         var currentEvents = this.getCurrentPlayerEvents();
 
@@ -812,6 +866,22 @@ export class SpellSoundSfx {
 
                 new SoundEffect({
                     type: SfxType.OreDepleted,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Fishing in progress
+            else if (event.eventType == PlayerEventType.FishingInProgress) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.FishingInProgress,
                     moduleHandle: this,
                     category: SfxCategory.NonCritical,
                     source: sfxSource
