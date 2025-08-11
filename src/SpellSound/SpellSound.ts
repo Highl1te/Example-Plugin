@@ -1464,15 +1464,19 @@ export default class SpellSound extends Plugin {
 
             // Is there a song with a higher priority now?
             let areThereHigherPrioritySongs : boolean = false;
+            const currentRegionTags = this.songs[this.currentSongId].regionsToPlayIn;
 
             // Check if there are any songs with a higher priority in the current music regions
             for (const region of currentMusicRegions) {
-                areThereHigherPrioritySongs = currentSongMetadata.regionsToPlayIn
-                    .filter(tag => tag.regionName === region.regionName)
-                    .some(
-                        tag => tag.regionName === region.regionName &&
-                               tag.priority < currentSongMetadata.regionsToPlayIn[0].priority
-                    );
+                for (const song of this.songs) {
+                    if (song.regionsToPlayIn.some(tag =>
+                            tag.regionName === region.regionName &&
+                            tag.priority < currentRegionTags.filter(r => r.regionName === tag.regionName)[0].priority
+                    )) {
+                        areThereHigherPrioritySongs = true;
+                        break;
+                    }
+                }
 
                 if (areThereHigherPrioritySongs) {
                     // No need to check further if we found a higher priority song.

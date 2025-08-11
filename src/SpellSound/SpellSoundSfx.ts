@@ -31,6 +31,10 @@ import sound_ore_depleted3 from '../../resources/sounds/SpellSound/sfx/ore_deple
 import sound_fishing1 from '../../resources/sounds/SpellSound/sfx/fishing1.mp3';
 import sound_fishing2 from '../../resources/sounds/SpellSound/sfx/fishing2.mp3';
 import sound_fishing3 from '../../resources/sounds/SpellSound/sfx/fishing3.mp3';
+import sound_fish_caught1 from '../../resources/sounds/SpellSound/sfx/fish_caught1.mp3';
+import sound_fish_caught2 from '../../resources/sounds/SpellSound/sfx/fish_caught2.mp3';
+import sound_fish_caught3 from '../../resources/sounds/SpellSound/sfx/fish_caught3.mp3';
+import sound_full_inventory from '../../resources/sounds/SpellSound/sfx/full_inventory.mp3';
 
 /**
  * A simple 3D vector class to represent positions in 3D space.
@@ -71,6 +75,7 @@ enum SfxType {
     OreDepleted, // Sound when a rock is depleted after mining
     FishingInProgress, // Sound when fishing but not yet catching a fish
     FishCaught, // Sound when catching a fish
+    FullInventory,
     // Add more sound effect types as needed
 }
 
@@ -216,6 +221,7 @@ enum PlayerEventType {
     OreDepleted = 101, // When a rock is depleted after mining
     FishingInProgress = 102, // When fishing but not yet catching a fish
     FishCaught = 103, // When catching a fish
+    FullInventory = 104,
 }
 
 /**
@@ -603,6 +609,7 @@ export class SpellSoundSfx {
                 url: sound_caughtstealing3
             }),
 
+
             new SfxTag({
                 type: SfxType.StealSuccessful,
                 url: sound_steal1
@@ -616,6 +623,7 @@ export class SpellSoundSfx {
                 url: sound_steal3
             }),
 
+
             new SfxTag({
                 type: SfxType.FishingInProgress,
                 url: sound_fishing1
@@ -627,6 +635,26 @@ export class SpellSoundSfx {
             new SfxTag({
                 type: SfxType.FishingInProgress,
                 url: sound_fishing3
+            }),
+
+
+            new SfxTag({
+                type: SfxType.FishCaught,
+                url: sound_fish_caught1
+            }),
+            new SfxTag({
+                type: SfxType.FishCaught,
+                url: sound_fish_caught2
+            }),
+            new SfxTag({
+                type: SfxType.FishCaught,
+                url: sound_fish_caught3
+            }),
+
+            
+            new SfxTag({
+                type: SfxType.FullInventory,
+                url: sound_full_inventory
             }),
             // Add more sound effects as needed
         ];
@@ -684,8 +712,24 @@ export class SpellSoundSfx {
                 eventList.push(new PlayerEvent(PlayerEventType.FishCaught));
             }
             else {
-                // If we're fishing, then we must be in the process of fishing.
+                // We must not have caught anything this tick.
                 eventList.push(new PlayerEvent(PlayerEventType.FishingInProgress));
+            }
+        }
+
+        if (this.inventoryManager.EventQueue().length > 0) {
+            // If the inventory changed, we should check if it was full.
+            const currentItems = this.inventoryManager.EventQueue()[0].currentItems;
+            const previousItems = this.inventoryManager.EventQueue()[0].previousItems;
+
+            // Check if the inventory was full previously
+            const wasInventoryFull = previousItems.filter(item => item.isNull === false).length >= 28;
+
+            // Check if the inventory is full
+            const isInventoryFull = currentItems.filter(item => item.isNull === false).length >= 28;
+
+            if (!wasInventoryFull && isInventoryFull) {
+                eventList.push(new PlayerEvent(PlayerEventType.FullInventory));
             }
         }
     }
@@ -751,11 +795,11 @@ export class SpellSoundSfx {
 
         var currentEvents = this.getCurrentPlayerEvents();
 
-        this.ProcessPlayerEvents(player, currentEvents);
+        this.processPlayerEvents(player, currentEvents);
     }
 
-    ProcessPlayerEvents(player, events: PlayerEvent[]) {
-        this.logToPlugin(`\t--> Entering function ${this.ProcessPlayerEvents.name} with events: ${events.map(e => e.eventType).join(", ")}`);
+    processPlayerEvents(player, events: PlayerEvent[]) {
+        this.logToPlugin(`\t--> Entering function ${this.processPlayerEvents.name} with events: ${events.map(e => e.eventType).join(", ")}`);
 
         for (let event of events) {
             this.logToPlugin(`\t--> Processing state "${PlayerEventType[event.eventType]}"`);
@@ -888,7 +932,39 @@ export class SpellSoundSfx {
                 }).play();
             }
 
-            this.logToPlugin(`\t<-- Exiting function ${this.ProcessPlayerEvents.name} with event state: ${event.eventType}`);
+            // Fish caught
+            else if (event.eventType == PlayerEventType.FishCaught) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.FishCaught,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // NOT supposed to be attached to the if-elseif chain, we can have a full
+            //  inventory and still be doing something else, too
+            if (event.eventType == PlayerEventType.FullInventory) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.UI
+                });
+
+                new SoundEffect({
+                    type: SfxType.FullInventory,
+                    moduleHandle: this,
+                    category: SfxCategory.UI,
+                    source: sfxSource
+                }).play();
+            }
+
+            this.logToPlugin(`\t<-- Exiting function ${this.processPlayerEvents.name} with event state: ${event.eventType}`);
         }
 
         // Update the last known player state to the most recent event's state.
