@@ -35,6 +35,12 @@ import sound_fish_caught1 from '../../resources/sounds/SpellSound/sfx/fish_caugh
 import sound_fish_caught2 from '../../resources/sounds/SpellSound/sfx/fish_caught2.mp3';
 import sound_fish_caught3 from '../../resources/sounds/SpellSound/sfx/fish_caught3.mp3';
 import sound_full_inventory from '../../resources/sounds/SpellSound/sfx/full_inventory.mp3';
+import sound_chop1 from '../../resources/sounds/SpellSound/sfx/chop1.mp3';
+import sound_chop2 from '../../resources/sounds/SpellSound/sfx/chop2.mp3';
+import sound_chop3 from '../../resources/sounds/SpellSound/sfx/chop3.mp3';
+import sound_log_received1 from '../../resources/sounds/SpellSound/sfx/log_received1.mp3';
+import sound_log_received2 from '../../resources/sounds/SpellSound/sfx/log_received2.mp3';
+import sound_log_received3 from '../../resources/sounds/SpellSound/sfx/log_received3.mp3';
 
 /**
  * A simple 3D vector class to represent positions in 3D space.
@@ -76,6 +82,9 @@ enum SfxType {
     FishingInProgress, // Sound when fishing but not yet catching a fish
     FishCaught, // Sound when catching a fish
     FullInventory,
+    WoodcutInProgress,
+    WoodcutLogsReceived, // Sound when receiving logs from chopping a tree
+    WoodcutTreeFelled,
     // Add more sound effect types as needed
 }
 
@@ -222,6 +231,9 @@ enum PlayerEventType {
     FishingInProgress = 102, // When fishing but not yet catching a fish
     FishCaught = 103, // When catching a fish
     FullInventory = 104,
+    WoodcutInProgress = 105, // When chopping a tree but not receiving any logs this tick
+    WoodcutLogsReceived = 106, // When receiving logs from chopping a tree
+    WoodcutTreeFelled = 107, // When a tree is fully chopped and logs are received
 }
 
 /**
@@ -656,6 +668,35 @@ export class SpellSoundSfx {
                 type: SfxType.FullInventory,
                 url: sound_full_inventory
             }),
+
+
+            new SfxTag({
+                type: SfxType.WoodcutInProgress,
+                url: sound_chop1
+            }),
+            new SfxTag({
+                type: SfxType.WoodcutInProgress,
+                url: sound_chop2
+            }),
+            new SfxTag({
+                type: SfxType.WoodcutInProgress,
+                url: sound_chop3
+            }),
+
+
+            new SfxTag({
+                type: SfxType.WoodcutLogsReceived,
+                url: sound_log_received1
+            }),
+            new SfxTag({
+                type: SfxType.WoodcutLogsReceived,
+                url: sound_log_received2
+            }),
+            new SfxTag({
+                type: SfxType.WoodcutLogsReceived,
+                url: sound_log_received3
+            }),
+
             // Add more sound effects as needed
         ];
 
@@ -717,6 +758,21 @@ export class SpellSoundSfx {
             }
         }
 
+        // Woodcutting states. These two states are disambiguations of each-other, as
+        //  the game hook will list them both as "Woodcutting".
+        if (currentState.valueOf() == PlayerEventType.WoodcuttingState) {
+            if (this.inventoryManager.EventQueue().length > 0) {
+                // The inventory changed, so we probably received logs.
+                //  Not a foolproof algorithm, I'll have to check the item IDs eventually.
+                eventList.push(new PlayerEvent(PlayerEventType.WoodcutLogsReceived));
+            }
+            else {
+                // We must not have received logs this tick, so we are still chopping.
+                eventList.push(new PlayerEvent(PlayerEventType.WoodcutInProgress));
+            }
+        }
+
+        // Full Inventory
         if (this.inventoryManager.EventQueue().length > 0) {
             // If the inventory changed, we should check if it was full.
             const currentItems = this.inventoryManager.EventQueue()[0].currentItems;
@@ -942,6 +998,38 @@ export class SpellSoundSfx {
 
                 new SoundEffect({
                     type: SfxType.FishCaught,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Woodcutting in progress
+            else if (event.eventType == PlayerEventType.WoodcutInProgress) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.WoodcutInProgress,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
+            // Woodcutting logs received
+            else if (event.eventType == PlayerEventType.WoodcutLogsReceived) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+                
+                new SoundEffect({
+                    type: SfxType.WoodcutLogsReceived,
                     moduleHandle: this,
                     category: SfxCategory.NonCritical,
                     source: sfxSource
