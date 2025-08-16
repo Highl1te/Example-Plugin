@@ -763,6 +763,7 @@ export default class SpellSound extends Plugin {
 
         this.playNextSong();
 
+        this.spellSoundSfx.start();
         this.logToPlugin('Spell Sound started.', LogLevel.Important);
     }
     
@@ -1520,7 +1521,7 @@ export default class SpellSound extends Plugin {
                     this.playNextSong();
                 }
             }
-            
+
             this.previousPosition = new Vector2d( playerMapPos.X, playerMapPos.Z );
         }
     }

@@ -444,7 +444,7 @@ class InventoryManager {
     pollForInventoryEvents() {
         this.moduleHandle.logToPlugin(`\t--> Entering function ${this.pollForInventoryEvents.name}`);
 
-        const player = document.highlite.gameHooks.EntityManager.Instance.MainPlayer;
+        const player = this.moduleHandle.basePlugin.gameHooks.EntityManager.Instance.MainPlayer;
         if (!player || !player.Inventory) {
             return;
         }
@@ -454,7 +454,7 @@ class InventoryManager {
         this.eventQueue = [];
 
         this.currentItems = this.ezItemsArrayFromItems(player.Inventory.Items);
-        var isInventoryTheSame = this.previousItems.every((item, index) => item?.isEqual(this.currentItems[index]));
+        var isInventoryTheSame = this.previousItems.every((item, index) => item.isEqual(this.currentItems[index]));
 
         if (!isInventoryTheSame) {
             this.eventQueue.push({
@@ -483,7 +483,7 @@ export class SpellSoundSfx {
      * The base plugin that this Sfx module is part of. This is
      *  used to access the plugin's game hooks and state.
      */
-    private basePlugin : SpellSound;
+    public basePlugin : SpellSound;
 
     /**
      * An array of all sound effect tags. This is used to store
@@ -526,6 +526,11 @@ export class SpellSoundSfx {
     // Ease of use function mapped to the main plugin's logger.
     logToPlugin(message: string, level: LogLevel = LogLevel.Debug): void {
         this.basePlugin.logToPlugin(message, level, LogSource.Sfx);
+    }
+
+    start() : void {
+        document.highlite.gameHooks.EntityManager.Instance.MainPlayer.Inventory.OnInventoryChangeListener.add(() => {
+            this.logToPlugin(`inventory == ${document.highlite.gameHooks.EntityManager.Instance.MainPlayer.Inventory.Items.map(i => i?._def?._name ?? "null").join(", ")}; `), LogLevel.Important});
     }
 
     getSoundManager() : SoundManager {
