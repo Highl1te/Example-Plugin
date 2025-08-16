@@ -1,4 +1,7 @@
-import SpellSound, { SpellSoundLogLevel as LogLevel } from "./SpellSound";
+import SpellSound from "./SpellSound";
+import { SpellSoundLogLevel as LogLevel } from "./SpellSound";
+import { SpellSoundLogSource as LogSource } from "./SpellSound";
+
 import { ActionState } from "@highlite/plugin-api";
 import { SoundManager } from "@highlite/plugin-api";
 import { Item } from "@highlite/plugin-api";
@@ -41,6 +44,20 @@ import sound_chop3 from '../../resources/sounds/SpellSound/sfx/chop3.mp3';
 import sound_log_received1 from '../../resources/sounds/SpellSound/sfx/log_received1.mp3';
 import sound_log_received2 from '../../resources/sounds/SpellSound/sfx/log_received2.mp3';
 import sound_log_received3 from '../../resources/sounds/SpellSound/sfx/log_received3.mp3';
+import sound_cook1 from '../../resources/sounds/SpellSound/sfx/cook1.mp3';
+import sound_cook2 from '../../resources/sounds/SpellSound/sfx/cook2.mp3';
+import sound_cook3 from '../../resources/sounds/SpellSound/sfx/cook3.mp3';
+import sound_burn from '../../resources/sounds/SpellSound/sfx/burn.mp3';
+
+/**
+ * An enum representing the IDs of various items in the game. This is so that
+ *  we have a centralized place to find which item IDs correspond to what item.
+ * There's not currently a great API in highlite to get item IDs, so this
+ *  is a workaround.
+ */
+enum ItemIds {
+    BurntFood = 325,
+}
 
 /**
  * A simple 3D vector class to represent positions in 3D space.
@@ -85,6 +102,8 @@ enum SfxType {
     WoodcutInProgress,
     WoodcutLogsReceived, // Sound when receiving logs from chopping a tree
     WoodcutTreeFelled,
+    CookingSuccess,
+    CookingFailure,
     // Add more sound effect types as needed
 }
 
@@ -234,6 +253,9 @@ enum PlayerEventType {
     WoodcutInProgress = 105, // When chopping a tree but not receiving any logs this tick
     WoodcutLogsReceived = 106, // When receiving logs from chopping a tree
     WoodcutTreeFelled = 107, // When a tree is fully chopped and logs are received
+    CookingInProgress = 108, // When cooking but not yet finished cooking
+    CookingSuccess = 109, // When food is successfully cooked
+    CookingFailure = 110, // When food is burned
 }
 
 /**
@@ -402,7 +424,7 @@ class InventoryManager {
         return items.map(item => {
             let ezItem : EasyItem;
 
-            if (!item) {
+            if (!item || item === undefined) {
                 // Handle null items gracefully
                 ezItem = new EasyItem({ id: 0, amount: 0, isNull: true});
             }
@@ -481,7 +503,7 @@ export class SpellSoundSfx {
      *  determine if the player has changed state since the last
      *  update, so that we can play the appropriate sound effect.
      */
-    private lastPlayerState: PlayerEventType = PlayerEventType.Any;
+    private lastPlayerStates: PlayerEventType[] = [ PlayerEventType.Any ];
 
     /**
      * The highlite sound manager, which is used to play sound effects.
@@ -496,11 +518,6 @@ export class SpellSoundSfx {
      */
     private inventoryManager : InventoryManager;
 
-    /**
-     * As of 8/9/2025, InventoryManager doesn't have a referenceable type
-     *  in HighLite. However, it's still a part of the gameHooks.
-     */
-
     constructor(basePlugin : SpellSound) {
         this.basePlugin = basePlugin;
         this.inventoryManager = new InventoryManager(this);
@@ -508,7 +525,7 @@ export class SpellSoundSfx {
 
     // Ease of use function mapped to the main plugin's logger.
     logToPlugin(message: string, level: LogLevel = LogLevel.Debug): void {
-        this.basePlugin.logToPlugin(message);
+        this.basePlugin.logToPlugin(message, level, LogSource.Sfx);
     }
 
     getSoundManager() : SoundManager {
@@ -697,6 +714,26 @@ export class SpellSoundSfx {
                 url: sound_log_received3
             }),
 
+
+            new SfxTag({
+                type: SfxType.CookingSuccess,
+                url: sound_cook1
+            }),
+            new SfxTag({
+                type: SfxType.CookingSuccess,
+                url: sound_cook2
+            }),
+            new SfxTag({
+                type: SfxType.CookingSuccess,
+                url: sound_cook3
+            }),
+
+
+            new SfxTag({
+                type: SfxType.CookingFailure,
+                url: sound_burn
+            }),
+
             // Add more sound effects as needed
         ];
 
@@ -715,6 +752,68 @@ export class SpellSoundSfx {
     }
 
     /**
+     * Adds our custom action states for "Cooking", if necessary, if the player
+     *  is currently cooking.
+     */
+    addExtendedActionStateForCooking(eventList: PlayerEvent[], currentState: ActionState) {
+        // Cooking states. These two states are disambiguations of each-other, as
+        //  the game hook will list them both as "Cooking".
+        let doAddCookingInProgress = false;
+
+        if (currentState.valueOf() == PlayerEventType.CookingState
+        ) {
+            doAddCookingInProgress = true;
+
+            // Add the "Cooking state" still, as a catch-all for any
+            //  cooking-related states
+            eventList.push(new PlayerEvent(PlayerEventType.CookingState));
+            this.logToPlugin("Player is currently cooking.");
+        }
+
+        if (this.lastPlayerStates.includes(PlayerEventType.CookingState)
+        ) {
+            this.logToPlugin("Player was cooking last tick.");
+
+            // The inventory doesn't always change when we're cooking,
+            //  so see if we're in the process of cooking, or if we've
+            //  successfuly cooked something, etc.
+            if (this.inventoryManager.EventQueue().length > 0) {
+                this.logToPlugin("Inventory changed while cooking.");
+
+                const currentItems = this.inventoryManager.EventQueue()[0].currentItems;
+                const previousItems = this.inventoryManager.EventQueue()[0].previousItems;
+                
+                doAddCookingInProgress = false;
+
+                // Check if we have more burnt food in our inventory now compared to last tick.
+                // Sum up the stack count for each burnt food stack for each of the two inventories.
+                const burnedFood =
+                    currentItems.filter(item => item.id === ItemIds.BurntFood)
+                                .reduce((sum, item) => sum + item.amount, 0)
+                    > previousItems.filter(item => item.id === ItemIds.BurntFood)
+                                .reduce((sum, item) => sum + item.amount, 0);
+
+                // If we have more burnt food, then we failed to cook something.
+                // If we don't have more burnt food, then we must have successfully cooked something, right? Hopefully..
+                if (burnedFood) {
+                    eventList.push(new PlayerEvent(PlayerEventType.CookingFailure));
+                }
+                else {
+                    eventList.push(new PlayerEvent(PlayerEventType.CookingSuccess));
+                }
+            }
+            else {
+                this.logToPlugin("Inventory did not change while cooking.");
+            }
+        }
+
+        if (doAddCookingInProgress) {
+            this.logToPlugin("Player is cooking, but not done yet.");            // If we're currently cooking, but not done yet, then add the in-progress state.
+            eventList.push(new PlayerEvent(PlayerEventType.CookingInProgress));
+        }
+    }
+
+    /**
      * Adds any of our custom "ActionState"s (i.e. "PlayerEventType"s) to the event list, if
      *  any event occurred. This is used to extend the built-in ActionState enum with
      *  additional states that are useful for sound effects.
@@ -722,8 +821,14 @@ export class SpellSoundSfx {
     addExtendedActionStates(eventList: PlayerEvent[], currentState: ActionState) {
         // Add any extended action states here.
         
+        // Only log if something interesting happened; otherwise important messages
+        //  get lost in the spam.
+        if (eventList.length > 1) {
+            this.logToPlugin(`\t--> Entering function ${this.addExtendedActionStates.name} with current state: ${PlayerEventType[currentState.valueOf()]}`);
+        }
+
         // Crime Success
-        if (this.lastPlayerState == PlayerEventType.PickpocketingState &&
+        if (this.lastPlayerStates.includes(PlayerEventType.PickpocketingState) &&
             currentState.valueOf() != PlayerEventType.PickpocketingState &&
             currentState.valueOf() != PlayerEventType.StunnedState
         ) {
@@ -734,7 +839,7 @@ export class SpellSoundSfx {
         }
 
         // Ore Depleted
-        if (this.lastPlayerState == PlayerEventType.MiningState &&
+        if (this.lastPlayerStates.includes(PlayerEventType.MiningState) &&
             currentState.valueOf() != PlayerEventType.MiningState
         ) {
             // If we're no longer mining, but we were mining before,
@@ -772,6 +877,8 @@ export class SpellSoundSfx {
             }
         }
 
+        this.addExtendedActionStateForCooking(eventList, currentState);
+
         // Full Inventory
         if (this.inventoryManager.EventQueue().length > 0) {
             // If the inventory changed, we should check if it was full.
@@ -787,6 +894,12 @@ export class SpellSoundSfx {
             if (!wasInventoryFull && isInventoryFull) {
                 eventList.push(new PlayerEvent(PlayerEventType.FullInventory));
             }
+        }
+
+        // Only log if something interesting happened; otherwise important messages
+        //  get lost in the spam.
+        if (eventList.length > 1) {
+            this.logToPlugin(`\t<-- Exiting function ${this.addExtendedActionStates.name}, with eventList: [${eventList.map(e => PlayerEventType[e.eventType]).join(", ")}]`);
         }
     }
 
@@ -855,11 +968,8 @@ export class SpellSoundSfx {
     }
 
     processPlayerEvents(player, events: PlayerEvent[]) {
-        this.logToPlugin(`\t--> Entering function ${this.processPlayerEvents.name} with events: ${events.map(e => e.eventType).join(", ")}`);
 
         for (let event of events) {
-            this.logToPlugin(`\t--> Processing state "${PlayerEventType[event.eventType]}"`);
-
             // Mining
             if (event.eventType == PlayerEventType.MiningState) {
                 // The source of the sound effect.
@@ -1036,6 +1146,22 @@ export class SpellSoundSfx {
                 }).play();
             }
 
+            // Cooking success
+            else if (event.eventType == PlayerEventType.CookingSuccess) {
+                // The source of the sound effect.
+                let sfxSource = new SfxSource({
+                    type: SfxSourceType.Player,
+                    position: new Vector3d(player.CurrentGamePosition.x, player.CurrentGamePosition.y, player.CurrentGamePosition.z)
+                });
+
+                new SoundEffect({
+                    type: SfxType.CookingSuccess,
+                    moduleHandle: this,
+                    category: SfxCategory.NonCritical,
+                    source: sfxSource
+                }).play();
+            }
+
             // NOT supposed to be attached to the if-elseif chain, we can have a full
             //  inventory and still be doing something else, too
             if (event.eventType == PlayerEventType.FullInventory) {
@@ -1051,15 +1177,13 @@ export class SpellSoundSfx {
                     source: sfxSource
                 }).play();
             }
-
-            this.logToPlugin(`\t<-- Exiting function ${this.processPlayerEvents.name} with event state: ${event.eventType}`);
         }
 
         // Update the last known player state to the most recent event's state.
         if (events.length > 0) {
-            this.lastPlayerState = events[events.length - 1].eventType;
+            this.lastPlayerStates = events.map(e => e.eventType);
         } else {
-            this.lastPlayerState = PlayerEventType.Any;
+            this.lastPlayerStates = [ PlayerEventType.Any ];
         }
     }
 }

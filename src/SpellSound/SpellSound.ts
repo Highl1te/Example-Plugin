@@ -6,6 +6,7 @@ import { SoundManager } from "@highlite/plugin-api";
 //  a shorter name in the plugin, but I don't want to expose the shorter
 //  name in the export and muddy the namespace.
 import { SpellSoundLogLevel as LogLevel } from "./SpellSound";
+import { SpellSoundLogSource as LogSource } from "./SpellSound";
 
 import icon_musicPlayer from "../../resources/images/music_icon.png";  // '@static/media/SpellSound/music_icon.png';
 
@@ -198,6 +199,17 @@ export enum SpellSoundLogLevel {
 }
 
 /**
+ * SpellSoundLogSource is an enum that defines the different sources
+ *  of log messages in the plugin. This is used to differentiate between
+ *  music and sound effects log messages, so that we can enable/disable
+ *  them separately.
+ */
+export enum SpellSoundLogSource {
+    Music,
+    Sfx,
+}
+
+/**
  * A simple class to store song metadata, such as the name, URL, loop count, and regions
  *  to play in.
  */
@@ -310,11 +322,8 @@ export default class SpellSound extends Plugin {
      */
     private spellSoundSfx : SpellSoundSfx;
 
-    /**
-     * Plugin setting to enable/disable debug logging.
-     * Set to true to log all debug info, false to log only errors, warnings, and important info.
-     */
-    private doLogAllDebugInfo = true; // false; // Set to true to log all debug info, false to log only errors, warnings, and important info.
+    private doLogMusicDebugInfo = false; // Set to true to log all music debug info, false to log only errors, warnings, and important info.
+    private doLogSfxDebugInfo = true; // Set to true to log all sfx debug info, false to log only errors, warnings, and important info.
 
     /**
      * Plugin setting to enable/disable inventory tooltips.
@@ -329,13 +338,19 @@ export default class SpellSound extends Plugin {
      * @param message - The message to log.
      * @param level - The log level (Debug, Important, Error).
      */
-    public logToPlugin(message: string, level: LogLevel = LogLevel.Debug) {
+    public logToPlugin(message: string, level: LogLevel = LogLevel.Debug, source: LogSource = LogSource.Music): void {
+        if (source == LogSource.Music && !this.doLogMusicDebugInfo && level == LogLevel.Debug) {
+            return;
+        }
+        
+        if (source == LogSource.Sfx && !this.doLogSfxDebugInfo && level == LogLevel.Debug) {
+            return;
+        }
+
         const prefix = `-${LogLevel[level]}- :`;
         switch (level) {
             case LogLevel.Debug:
-                if (this.doLogAllDebugInfo) {
-                    this.log(`${prefix} ${message}`);
-                }
+                this.log(`${prefix} ${message}`);
                 break;
             case LogLevel.Important:
                 this.log(`${prefix} ${message}`);
@@ -1451,51 +1466,61 @@ export default class SpellSound extends Plugin {
             var currentMusicRegions
                 = this.findMusicRegionsForPosition(new Vector2d(playerMapPos.X, playerMapPos.Z), playerMapLayer);
 
-            // Is this song still valid to play in the current region we're in?
-            var currentSongMetadata = this.songs[this.currentSongId];
-            var isSongStillInTag = currentMusicRegions.some(region =>
-                currentSongMetadata.regionsToPlayIn.some(
-                    tag => tag.regionName === region.regionName
+            // Are we in a different position, but in the same regions?
+            var isInSameRegion = this.validMusicRegions.some(region =>
+                currentMusicRegions.some(
+                    tag => tag.regionName === region.regionName &&
+                           tag.regionLayer === region.regionLayer
                 )
             );
 
-            this.logToPlugin(`\n====\nPlayer moved to position: ${playerMapPos.X}, ${playerMapPos.Z}, layer '${playerMapLayer}'`);
-            this.logToPlugin(`Is current song "${currentSongMetadata.name}" still valid in the current region? '${isSongStillInTag}'`);
+            if (!isInSameRegion) {
+                // Is this song still valid to play in the current region we're in?
+                var currentSongMetadata = this.songs[this.currentSongId];
+                var isSongStillInTag = currentMusicRegions.some(region =>
+                    currentSongMetadata.regionsToPlayIn.some(
+                        tag => tag.regionName === region.regionName
+                    )
+                );
 
-            // Is there a song with a higher priority now?
-            let areThereHigherPrioritySongs : boolean = false;
-            const currentRegionTags = this.songs[this.currentSongId].regionsToPlayIn;
+                this.logToPlugin(`\n====\nPlayer moved to position: ${playerMapPos.X}, ${playerMapPos.Z}, layer '${playerMapLayer}'`);
+                this.logToPlugin(`Is current song "${currentSongMetadata.name}" still valid in the current region? '${isSongStillInTag}'`);
 
-            // Check if there are any songs with a higher priority in the current music regions
-            for (const region of currentMusicRegions) {
-                for (const song of this.songs) {
-                    if (song.regionsToPlayIn.some(tag =>
-                            tag.regionName === region.regionName &&
-                            tag.priority < currentRegionTags.filter(r => r.regionName === tag.regionName)[0].priority
-                    )) {
-                        areThereHigherPrioritySongs = true;
+                // Is there a song with a higher priority now?
+                let areThereHigherPrioritySongs : boolean = false;
+                const currentRegionTags = this.songs[this.currentSongId].regionsToPlayIn;
+
+                // Check if there are any songs with a higher priority in the current music regions
+                for (const region of currentMusicRegions) {
+                    for (const song of this.songs) {
+                        if (song.regionsToPlayIn.some(tag =>
+                                tag.regionName === region.regionName &&
+                                tag.priority < (currentRegionTags.filter(r => r.regionName === tag.regionName)[0]?.priority ?? Infinity)
+                        )) {
+                            areThereHigherPrioritySongs = true;
+                            break;
+                        }
+                    }
+
+                    if (areThereHigherPrioritySongs) {
+                        // No need to check further if we found a higher priority song.
+                        //  PlayNextSong will figure out which song is highest
+                        //  priority and play it.
                         break;
                     }
                 }
+                
+                this.logToPlugin(`Are there higher priority songs in the current region? '${areThereHigherPrioritySongs}'`);
 
-                if (areThereHigherPrioritySongs) {
-                    // No need to check further if we found a higher priority song.
-                    //  PlayNextSong will figure out which song is highest
-                    //  priority and play it.
-                    break;
+                if ((!isSongStillInTag) || areThereHigherPrioritySongs) {
+                    // We're in a new music region that doesn't match the old music, so update the current music regions.
+                    this.logToPlugin(`====\n\tPrevious tags were: ${this.validMusicRegions.map(r => r.regionName).join(', ')}\n\tPlayer moved to a new music region with these tags: ${currentMusicRegions.map(r => r.regionName).join(', ')}`, LogLevel.Important);
+
+                    // Play the next song based on the new music regions
+                    this.playNextSong();
                 }
             }
             
-            this.logToPlugin(`Are there higher priority songs in the current region? '${areThereHigherPrioritySongs}'`);
-
-            if ((!isSongStillInTag) || areThereHigherPrioritySongs) {
-                // We're in a new music region that doesn't match the old music, so update the current music regions.
-                this.logToPlugin(`====\n\tPrevious tags were: ${this.validMusicRegions.map(r => r.regionName).join(', ')}\n\tPlayer moved to a new music region with these tags: ${currentMusicRegions.map(r => r.regionName).join(', ')}`, LogLevel.Important);
-
-                // Play the next song based on the new music regions
-                this.playNextSong();
-            }
-
             this.previousPosition = new Vector2d( playerMapPos.X, playerMapPos.Z );
         }
     }
