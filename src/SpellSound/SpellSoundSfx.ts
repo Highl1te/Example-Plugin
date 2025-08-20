@@ -385,6 +385,7 @@ class EasyItem {
 interface InventoryChangedEvent {
     previousItems: Array<EasyItem>;
     currentItems: Array<EasyItem>;
+    timestamp: number;
 }
 
 /**
@@ -459,7 +460,8 @@ class InventoryManager {
         if (!isInventoryTheSame) {
             this.eventQueue.push({
                 previousItems: [...this.previousItems],
-                currentItems: [...this.currentItems]
+                currentItems: [...this.currentItems],
+                timestamp: Date.now()
             });
 
             // Log the inventory change

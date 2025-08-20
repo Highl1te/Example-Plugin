@@ -86,6 +86,12 @@ enum MusicRegionName {
     Summerton = 'summerton',
     DriftwoodIsle = 'driftwood isle',
     MtTan = 'Mount Tan',
+
+    // where I want the song "Volrund the Honourable" to play with priority.
+    //  not actually a region ingame (like "Banton")
+    VolrundsLand = 'Volrund\'s Land',
+
+    WizardsTower = 'Wizard\'s Tower',
 }
 
 enum MusicRegionLayer {
@@ -322,8 +328,8 @@ export default class SpellSound extends Plugin {
      */
     private spellSoundSfx : SpellSoundSfx;
 
-    private doLogMusicDebugInfo = false; // Set to true to log all music debug info, false to log only errors, warnings, and important info.
-    private doLogSfxDebugInfo = true; // Set to true to log all sfx debug info, false to log only errors, warnings, and important info.
+    private doLogMusicDebugInfo = true; // Set to true to log all music debug info, false to log only errors, warnings, and important info.
+    private doLogSfxDebugInfo = false; // Set to true to log all sfx debug info, false to log only errors, warnings, and important info.
 
     /**
      * Plugin setting to enable/disable inventory tooltips.
@@ -416,13 +422,15 @@ export default class SpellSound extends Plugin {
             }),
 
             new SongInfo({
-                // This song is a cheeky nod to Volrund who returned my items
+                // This song is a cheeky nod to Volrund who returned my bronze-level items
                 //  after I died to a goblin as a noob.
                 name: 'Volrund the Honourable',
                 url: song_VolrundTheHonourable,
                 minLoopCount: 0,
                 maxLoopCount: 0,
-                regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.AnywhereOverworld) ],
+
+                // Give a priority of "2" in "Volrund's Land" so that Summerton/HighCove music will override it, if necessary.
+                regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.AnywhereOverworld), new MusicRegionTag(MusicRegionName.VolrundsLand, 2) ],
                 author: 'Bpcooldude',
             }),
 
@@ -559,7 +567,7 @@ export default class SpellSound extends Plugin {
                 url: song_DistantHorizon,
                 minLoopCount: 0,
                 maxLoopCount: 0,
-                regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.AnywhereOverworld) ],
+                regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.AnywhereOverworld), new MusicRegionTag(MusicRegionName.WizardsTower, 1) ],
                 author: 'Bpcooldude',
             }),
             
@@ -708,6 +716,26 @@ export default class SpellSound extends Plugin {
                 topRightWorldPos:   new Vector2d(72, 488),
                 regionLayer:        MusicRegionLayer.Overworld,
                 regionName:         MusicRegionName.MtTan
+            }),
+
+            new MusicRegion({
+                bottomLeftWorldPos: new Vector2d(-279, -295),
+                topRightWorldPos:   new Vector2d(-167, -167), // not a typo, it's actually the same number ingame
+                regionLayer:        MusicRegionLayer.Overworld,
+                regionName:         MusicRegionName.VolrundsLand // box 1
+            }),
+            new MusicRegion({
+                bottomLeftWorldPos: new Vector2d(-167, -231),
+                topRightWorldPos:   new Vector2d(-103, -151),
+                regionLayer:        MusicRegionLayer.Overworld,
+                regionName:         MusicRegionName.VolrundsLand // box 2
+            }),
+
+            new MusicRegion({
+                bottomLeftWorldPos: new Vector2d(40, 24),
+                topRightWorldPos:   new Vector2d(120, 88),
+                regionLayer:        MusicRegionLayer.Overworld,
+                regionName:         MusicRegionName.WizardsTower
             }),
 
             // Add more regions as needed
@@ -1219,21 +1247,50 @@ export default class SpellSound extends Plugin {
 
         let matchingSongs
                 = this.findSongsWithMatchingRegions(this.validMusicRegions);
-
-        this.logToPlugin(`matchingSongs: ${matchingSongs.map(s => s.name).join(', ')}`);
+        
         this.logToPlugin(`Found ${matchingSongs.length} matching songs for the current position.`);
+
+        // add each song to the list potentially multiple times,
+        //  for each region the song is valid in
+        matchingSongs = matchingSongs.flatMap(song => {
+            return song.regionsToPlayIn.map(regionTag => {
+                // If the region tag is valid for the current position, return the song
+                if (this.validMusicRegions.some(r => r.regionName === regionTag.regionName)) {
+                    // The region name matches, so we want this song.
+                    // Create a shallow copy with the same info except
+                    //  for the region list, which contains only
+                    //  the current region tag.
+                    const songCopy = new SongInfo({
+                        name: song.name,
+                        author: song.author,
+                        url: song.url,
+                        minLoopCount: song.minLoopCount,
+                        maxLoopCount: song.maxLoopCount,
+                        regionsToPlayIn: [regionTag], // Keep only the current region tag
+                    });
+
+                    return songCopy;
+                }
+                return null; // Return null if the region tag does not match
+            }).filter(song => song !== null); // Filter out null values
+        });
+
+        this.logToPlugin(`matchingSongs: ${matchingSongs.map(s => s.name + ' - priority ' + s.regionsToPlayIn[0].priority).join(', ')}`);
+        
 
         this.logToPlugin(`sorting matchingSongs by priority, if any`);
 
         // Order the matching songs by priority, if any
+        var validRegionNames = this.validMusicRegions.map(r => r.regionName);
         matchingSongs.sort((a, b) => {
-            const aPriority = a.regionsToPlayIn.reduce((min, tag) => Math.min(min, tag.priority), Infinity);
-            const bPriority = b.regionsToPlayIn.reduce((min, tag) => Math.min(min, tag.priority), Infinity);
+            const aPriority = a.regionsToPlayIn.filter(r => validRegionNames.includes(r.regionName))
+                                                    .reduce((min, tag) => Math.min(min, tag.priority), Infinity);
+            const bPriority = b.regionsToPlayIn.filter(r => validRegionNames.includes(r.regionName))
+                                                    .reduce((min, tag) => Math.min(min, tag.priority), Infinity);
             return aPriority - bPriority; // Sort by priority (lower is better)
         });
 
         // Songs that have an "Infinite" priority -- thus are not region-specific
-
         var fallbackSongs : SongInfo[] = [];
 
         // Group the songs into priority 'buckets'
