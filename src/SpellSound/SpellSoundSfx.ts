@@ -403,8 +403,25 @@ class InventoryManager {
      */
     private eventQueue : Array<InventoryChangedEvent>;
 
-    public EventQueue() : Array<InventoryChangedEvent> {
-        return this.eventQueue;
+    public EventQueue() : InventoryChangedEvent | null {
+        // Use the oldest "previous items" and the youngest
+        //  "current items" to get the most recent inventory change.
+        //
+        // It would be too much of a hassle (and not necessary) to check
+        //  every state change that happened between now and the last check;
+        //  a simple check like this should suffice for sound effects.
+
+        if (this.eventQueue.length === 0) {
+            return null
+        }
+
+        var sortedQueue = this.eventQueue.sort((a, b) => a.timestamp - b.timestamp);
+
+        return {
+            previousItems: sortedQueue[0].previousItems,
+            currentItems: sortedQueue[sortedQueue.length - 1].currentItems,
+            timestamp: Date.now()
+        } as InventoryChangedEvent;
     }
 
     constructor(moduleHandle: SpellSoundSfx) {
@@ -784,11 +801,11 @@ export class SpellSoundSfx {
             // The inventory doesn't always change when we're cooking,
             //  so see if we're in the process of cooking, or if we've
             //  successfuly cooked something, etc.
-            if (this.inventoryManager.EventQueue().length > 0) {
+            if (this.inventoryManager.EventQueue()) {
                 this.logToPlugin("Inventory changed while cooking.");
 
-                const currentItems = this.inventoryManager.EventQueue()[0].currentItems;
-                const previousItems = this.inventoryManager.EventQueue()[0].previousItems;
+                const currentItems = this.inventoryManager.EventQueue()?.currentItems ?? [];
+                const previousItems = this.inventoryManager.EventQueue()?.previousItems ?? [];
                 
                 doAddCookingInProgress = false;
 
@@ -861,7 +878,7 @@ export class SpellSoundSfx {
             // The inventory changed, so we probably caught a fish.
             //  TODO: make this check the actual item ID's and itemCount
             //  in the future.
-            if (this.inventoryManager.EventQueue().length > 0) {
+            if (this.inventoryManager.EventQueue()) {
                 eventList.push(new PlayerEvent(PlayerEventType.FishCaught));
             }
             else {
@@ -873,7 +890,7 @@ export class SpellSoundSfx {
         // Woodcutting states. These two states are disambiguations of each-other, as
         //  the game hook will list them both as "Woodcutting".
         if (currentState.valueOf() == PlayerEventType.WoodcuttingState) {
-            if (this.inventoryManager.EventQueue().length > 0) {
+            if (this.inventoryManager.EventQueue()) {
                 // The inventory changed, so we probably received logs.
                 //  Not a foolproof algorithm, I'll have to check the item IDs eventually.
                 eventList.push(new PlayerEvent(PlayerEventType.WoodcutLogsReceived));
@@ -887,10 +904,10 @@ export class SpellSoundSfx {
         this.addExtendedActionStateForCooking(eventList, currentState);
 
         // Full Inventory
-        if (this.inventoryManager.EventQueue().length > 0) {
+        if (this.inventoryManager.EventQueue()) {
             // If the inventory changed, we should check if it was full.
-            const currentItems = this.inventoryManager.EventQueue()[0].currentItems;
-            const previousItems = this.inventoryManager.EventQueue()[0].previousItems;
+            const currentItems = this.inventoryManager.EventQueue()?.currentItems ?? [];
+            const previousItems = this.inventoryManager.EventQueue()?.previousItems ?? [];
 
             // Check if the inventory was full previously
             const wasInventoryFull = previousItems.filter(item => item.isNull === false).length >= 28;

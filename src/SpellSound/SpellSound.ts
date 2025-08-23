@@ -35,6 +35,7 @@ import song_Barbarian from '../../resources/sounds/SpellSound/songs/barbarian.mp
 import song_GlockAndPiano from '../../resources/sounds/SpellSound/songs/glock_and_piano.mp3';
 import song_TanSandMan from '../../resources/sounds/SpellSound/songs/tan_sand_man.mp3';
 import song_DistantHorizon from '../../resources/sounds/SpellSound/songs/distant_horizon.mp3';
+import song_Barony from '../../resources/sounds/SpellSound/songs/barony.mp3';
 import { SpellSoundSfx } from './SpellSoundSfx';
 
 /**
@@ -92,6 +93,7 @@ enum MusicRegionName {
     VolrundsLand = 'Volrund\'s Land',
 
     WizardsTower = 'Wizard\'s Tower',
+    KabeAgilityCourse = 'Kabe Agility Course',
 }
 
 enum MusicRegionLayer {
@@ -570,6 +572,15 @@ export default class SpellSound extends Plugin {
                 regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.AnywhereOverworld), new MusicRegionTag(MusicRegionName.WizardsTower, 1) ],
                 author: 'Bpcooldude',
             }),
+
+            new SongInfo({
+                name: 'Barony',
+                url: song_Barony,
+                minLoopCount: 0,
+                maxLoopCount: 0,
+                regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.KabeAgilityCourse, 1) ],
+                author: 'Bpcooldude'
+            }),
             
         ];
 
@@ -736,6 +747,13 @@ export default class SpellSound extends Plugin {
                 topRightWorldPos:   new Vector2d(120, 88),
                 regionLayer:        MusicRegionLayer.Overworld,
                 regionName:         MusicRegionName.WizardsTower
+            }),
+
+            new MusicRegion({
+                bottomLeftWorldPos: new Vector2d(-23, 24),
+                topRightWorldPos:   new Vector2d(0, 72),
+                regionLayer:        MusicRegionLayer.Overworld,
+                regionName:         MusicRegionName.KabeAgilityCourse
             }),
 
             // Add more regions as needed
@@ -1226,6 +1244,9 @@ export default class SpellSound extends Plugin {
     /**
      * Called when the previous song ends, and automatically picks the next song based
      *  on player location, if the user is playing a specific song, etc.
+     * 
+     * Remarks: I hate how this function is implemented, but it mostly works. I'll refactor it "Some Day".
+     * 
      * @param attemptCount -- how many times we've recursed trying to find a different song
      *  in this area. If this is greater than 5, then we just give up and play whatever song
      *  we can -- there might only be one song in this area, and we don't want to stack overflow.
@@ -1276,7 +1297,6 @@ export default class SpellSound extends Plugin {
         });
 
         this.logToPlugin(`matchingSongs: ${matchingSongs.map(s => s.name + ' - priority ' + s.regionsToPlayIn[0].priority).join(', ')}`);
-        
 
         this.logToPlugin(`sorting matchingSongs by priority, if any`);
 
@@ -1525,12 +1545,10 @@ export default class SpellSound extends Plugin {
                 = this.findMusicRegionsForPosition(new Vector2d(playerMapPos.X, playerMapPos.Z), playerMapLayer);
 
             // Are we in a different position, but in the same regions?
-            var isInSameRegion = this.validMusicRegions.some(region =>
-                currentMusicRegions.some(
-                    tag => tag.regionName === region.regionName &&
-                           tag.regionLayer === region.regionLayer
-                )
-            );
+            var isInSameRegion =
+                currentMusicRegions.every(
+                    tag => currentMusicRegions.map(r => r.regionName)
+                                              .includes(tag.regionName));
 
             if (!isInSameRegion) {
                 // Is this song still valid to play in the current region we're in?
