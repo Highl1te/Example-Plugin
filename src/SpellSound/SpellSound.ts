@@ -1,6 +1,6 @@
-import { Plugin } from "@highlite/plugin-api";
-import { UIManager } from "@highlite/plugin-api";
-import { SoundManager } from "@highlite/plugin-api";
+import { Plugin } from "@highlite/core";
+import { UIManager } from "@highlite/core";
+import { SoundManager } from "@highlite/core";
 
 // Yes, this is an import from the same file. I want to alias this as
 //  a shorter name in the plugin, but I don't want to expose the shorter
