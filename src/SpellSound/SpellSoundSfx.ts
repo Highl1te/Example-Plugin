@@ -4,7 +4,7 @@ import { SpellSoundLogSource as LogSource } from "./SpellSound";
 
 import { ActionState } from "@highlite/core";
 import { SoundManager } from "@highlite/core";
-import { Item } from "@highlite/core";
+import { Item } from "./oldApiDependencies/Item";
 
 //// I like importing these so that there's a compile error if any
 ////  of these files are missing, so that I can fix it.
