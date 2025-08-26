@@ -36,6 +36,7 @@ import song_GlockAndPiano from '../../resources/sounds/SpellSound/songs/glock_an
 import song_TanSandMan from '../../resources/sounds/SpellSound/songs/tan_sand_man.mp3';
 import song_DistantHorizon from '../../resources/sounds/SpellSound/songs/distant_horizon.mp3';
 import song_Barony from '../../resources/sounds/SpellSound/songs/barony.mp3';
+import song_SwampinAround from '../../resources/sounds/SpellSound/songs/swampin_around.mp3';
 import { SpellSoundSfx } from './SpellSoundSfx';
 
 /**
@@ -94,6 +95,7 @@ enum MusicRegionName {
 
     WizardsTower = 'Wizard\'s Tower',
     KabeAgilityCourse = 'Kabe Agility Course',
+    SwampAgilityCourse = 'Swamp Agility Course',
 }
 
 enum MusicRegionLayer {
@@ -581,6 +583,15 @@ export default class SpellSound extends Plugin {
                 regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.KabeAgilityCourse, 1) ],
                 author: 'Bpcooldude'
             }),
+
+            new SongInfo({
+                name: 'Swampin\' Around',
+                url: song_SwampinAround,
+                minLoopCount: 0,
+                maxLoopCount: 0,
+                regionsToPlayIn: [ new MusicRegionTag(MusicRegionName.SwampAgilityCourse, 1) ],
+                author: 'Bpcooldude'
+            }),
             
         ];
 
@@ -754,6 +765,13 @@ export default class SpellSound extends Plugin {
                 topRightWorldPos:   new Vector2d(0, 72),
                 regionLayer:        MusicRegionLayer.Overworld,
                 regionName:         MusicRegionName.KabeAgilityCourse
+            }),
+
+            new MusicRegion({
+                bottomLeftWorldPos: new Vector2d(168, -151),
+                topRightWorldPos:   new Vector2d(216, -103),
+                regionLayer:        MusicRegionLayer.Overworld,
+                regionName:         MusicRegionName.SwampAgilityCourse
             }),
 
             // Add more regions as needed
